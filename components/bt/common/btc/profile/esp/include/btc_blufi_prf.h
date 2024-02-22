@@ -26,15 +26,15 @@
 
 #define GATT_UUID_CHAR_CLIENT_CONFIG    0x2902      /*  Client Characteristic Configuration */
 //define the blufi serivce uuid
-#define BLUFI_SERVICE_UUID  0xFFFF
+#define BLUFI_SERVICE_UUID  0xFFFE
 //define the blufi Char uuid (PHONE to ESP32)
-#define BLUFI_CHAR_P2E_UUID 0xFF01
+#define BLUFI_CHAR_P2E_UUID 0xFF0A
 //define the blufi Char uuid (ESP32 to PHONE)
-#define BLUFI_CHAR_E2P_UUID 0xFF02
+#define BLUFI_CHAR_E2P_UUID 0xFF0B
 //define the blufi Descriptor uuid (ESP32 to PHONE)
 #define BLUFI_DESCR_E2P_UUID GATT_UUID_CHAR_CLIENT_CONFIG
 //define the blufi APP ID
-#define BLUFI_APP_UUID      0xFFFF
+#define BLUFI_APP_UUID      0xFFFE
 
 #define BLUFI_HDL_NUM   6
 
