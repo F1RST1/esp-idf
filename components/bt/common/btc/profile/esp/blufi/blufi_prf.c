@@ -82,6 +82,14 @@ void btc_blufi_send_notify(uint8_t *pkt, int pkt_len)
    esp_blufi_send_notify(&pkts);
 }
 
+void btc_blufi_send_notify_p2e(uint8_t *pkt, int pkt_len)
+{
+   struct pkt_info pkts;
+   pkts.pkt = pkt;
+   pkts.pkt_len = pkt_len;
+   esp_blufi_send_notify_p2e(&pkts);
+}
+
 void btc_blufi_report_error(esp_blufi_error_state_t state)
 {
     btc_msg_t msg;
@@ -227,6 +235,88 @@ void btc_blufi_send_encap(uint8_t type, uint8_t *data, int total_data_len)
 
         hdr->type = type;
         hdr->fc |= BLUFI_FC_DIR_E2P;
+        hdr->seq = blufi_env.send_seq++;
+
+        if (BLUFI_TYPE_IS_CTRL(hdr->type)) {
+            if ((blufi_env.sec_mode & BLUFI_CTRL_SEC_MODE_CHECK_MASK)
+                    && (blufi_env.cbs && blufi_env.cbs->checksum_func)) {
+                hdr->fc |= BLUFI_FC_CHECK;
+                checksum = blufi_env.cbs->checksum_func(hdr->seq, &hdr->seq, hdr->data_len + 2);
+                memcpy(&hdr->data[hdr->data_len], &checksum, 2);
+            }
+        } else if (!BLUFI_TYPE_IS_DATA_NEG(hdr->type) && !BLUFI_TYPE_IS_DATA_ERROR_INFO(hdr->type)) {
+            if ((blufi_env.sec_mode & BLUFI_DATA_SEC_MODE_CHECK_MASK)
+                    && (blufi_env.cbs && blufi_env.cbs->checksum_func)) {
+                hdr->fc |= BLUFI_FC_CHECK;
+                checksum = blufi_env.cbs->checksum_func(hdr->seq, &hdr->seq, hdr->data_len + 2);
+                memcpy(&hdr->data[hdr->data_len], &checksum, 2);
+            }
+
+            if ((blufi_env.sec_mode & BLUFI_DATA_SEC_MODE_ENC_MASK)
+                    && (blufi_env.cbs && blufi_env.cbs->encrypt_func)) {
+                ret = blufi_env.cbs->encrypt_func(hdr->seq, hdr->data, hdr->data_len);
+                if (ret == hdr->data_len) { /* enc must be success and enc len must equal to plain len */
+                    hdr->fc |= BLUFI_FC_ENC;
+                } else {
+                    BTC_TRACE_ERROR("%s encrypt error %d\n", __func__, ret);
+                    btc_blufi_report_error(ESP_BLUFI_ENCRYPT_ERROR);
+                    osi_free(hdr);
+                    return;
+                }
+            }
+        }
+
+        if (hdr->fc & BLUFI_FC_FRAG) {
+            remain_len -= (hdr->data_len - 2);
+        } else {
+            remain_len -= hdr->data_len;
+        }
+
+       esp_blufi_send_encap(hdr);
+
+        osi_free(hdr);
+        hdr =  NULL;
+    }
+}
+
+void btc_blufi_send_encap_p2e(uint8_t type, uint8_t *data, int total_data_len)
+{
+    struct blufi_hdr *hdr = NULL;
+    int remain_len = total_data_len;
+    uint16_t checksum;
+    int ret;
+
+    // if (blufi_env.is_connected == false) {
+    //     BTC_TRACE_ERROR("blufi connection has been disconnected \n");
+    //     return;
+    // }
+
+    while (remain_len > 0) {
+        if (remain_len > blufi_env.frag_size) {
+            hdr = osi_malloc(sizeof(struct blufi_hdr) + 2 + blufi_env.frag_size + 2);
+            if (hdr == NULL) {
+                BTC_TRACE_ERROR("%s no mem\n", __func__);
+                return;
+            }
+            hdr->fc = 0x0;
+            hdr->data_len = blufi_env.frag_size + 2;
+            hdr->data[0] = remain_len & 0xff;
+            hdr->data[1] = (remain_len >> 8) & 0xff;
+            memcpy(hdr->data + 2, &data[total_data_len - remain_len], blufi_env.frag_size); //copy first, easy for check sum
+            hdr->fc |= BLUFI_FC_FRAG;
+        } else {
+            hdr = osi_malloc(sizeof(struct blufi_hdr) + remain_len + 2);
+            if (hdr == NULL) {
+                BTC_TRACE_ERROR("%s no mem\n", __func__);
+                return;
+            }
+            hdr->fc = 0x0;
+            hdr->data_len = remain_len;
+            memcpy(hdr->data, &data[total_data_len - remain_len], hdr->data_len); //copy first, easy for check sum
+        }
+
+        hdr->type = type;
+        hdr->fc |= BLUFI_FC_DIR_P2E;
         hdr->seq = blufi_env.send_seq++;
 
         if (BLUFI_TYPE_IS_CTRL(hdr->type)) {
@@ -440,6 +530,23 @@ static void btc_blufi_send_custom_data(uint8_t *value, uint32_t value_len)
     uint8_t type = BLUFI_BUILD_TYPE(BLUFI_TYPE_DATA, BLUFI_TYPE_DATA_SUBTYPE_CUSTOM_DATA);
     memcpy(data, value, value_len);
     btc_blufi_send_encap(type, data, value_len);
+    osi_free(data);
+}
+
+static void btc_blufi_send_custom_data_p2e(uint8_t *value, uint32_t value_len)
+{
+    if(value == NULL || value_len == 0) {
+        BTC_TRACE_ERROR("%s value or value len error", __func__);
+        return;
+    }
+    uint8_t *data = osi_malloc(value_len);
+    if (data == NULL) {
+        BTC_TRACE_ERROR("%s mem malloc error", __func__);
+        return;
+    }
+    uint8_t type = BLUFI_BUILD_TYPE(BLUFI_TYPE_DATA, BLUFI_TYPE_DATA_SUBTYPE_CUSTOM_DATA);
+    memcpy(data, value, value_len);
+    btc_blufi_send_encap_p2e(type, data, value_len);
     osi_free(data);
 }
 
@@ -787,6 +894,20 @@ void btc_blufi_call_deep_copy(btc_msg_t *msg, void *p_dest, void *p_src)
         memcpy(dst->custom_data.data, src->custom_data.data, src->custom_data.data_len);
         break;
     }
+    case BTC_BLUFI_ACT_SEND_CUSTOM_DATA_P2E:{
+        uint8_t *data = src->custom_data.data;
+        if(data == NULL) {
+            BTC_TRACE_ERROR("custom data is NULL\n");
+            break;
+        }
+        dst->custom_data.data = osi_malloc(src->custom_data.data_len);
+        if(dst->custom_data.data == NULL) {
+            BTC_TRACE_ERROR("custom data malloc error\n");
+            break;
+        }
+        memcpy(dst->custom_data.data, src->custom_data.data, src->custom_data.data_len);
+        break;
+    }
     default:
         break;
     }
@@ -832,6 +953,13 @@ void btc_blufi_call_deep_free(btc_msg_t *msg)
         }
         break;
     }
+    case BTC_BLUFI_ACT_SEND_CUSTOM_DATA_P2E:{
+        uint8_t *data = arg->custom_data.data;
+        if(data) {
+            osi_free(data);
+        }
+        break;
+    }
     default:
         break;
     }
@@ -864,6 +992,9 @@ void btc_blufi_call_handler(btc_msg_t *msg)
         break;
     case BTC_BLUFI_ACT_SEND_CUSTOM_DATA:
         btc_blufi_send_custom_data(arg->custom_data.data, arg->custom_data.data_len);
+        break;
+    case BTC_BLUFI_ACT_SEND_CUSTOM_DATA_P2E:
+        btc_blufi_send_custom_data_p2e(arg->custom_data.data, arg->custom_data.data_len);
         break;
     default:
         BTC_TRACE_ERROR("%s UNKNOWN %d\n", __func__, msg->act);

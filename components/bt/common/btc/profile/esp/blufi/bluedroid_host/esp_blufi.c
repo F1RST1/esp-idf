@@ -360,6 +360,17 @@ void esp_blufi_send_notify(void *arg)
 
 }
 
+void esp_blufi_send_notify_p2e(void *arg)
+{
+    struct pkt_info *pkts = (struct pkt_info *) arg;
+    uint16_t conn_id = blufi_env.conn_id;
+    uint16_t attr_id = blufi_env.handle_char_p2e;
+    bool rsp = false;
+    BTA_GATTS_HandleValueIndication(conn_id, attr_id, pkts->pkt_len,
+                                    pkts->pkt, rsp);
+
+}
+
 void esp_blufi_deinit(void)
 {
     BTA_GATTS_StopService(blufi_env.handle_srvc);
@@ -389,6 +400,26 @@ retry:
     }
     if (esp_ble_get_cur_sendable_packets_num(BTC_GATT_GET_CONN_ID(blufi_env.conn_id)) > 0) {
         btc_blufi_send_notify((uint8_t *)hdr,
+                              ((hdr->fc & BLUFI_FC_CHECK) ?
+                               hdr->data_len + sizeof(struct blufi_hdr) + 2 :
+                               hdr->data_len + sizeof(struct blufi_hdr)));
+    } else {
+        BTC_TRACE_WARNING("%s wait to send blufi custom data\n", __func__);
+        vTaskDelay(pdMS_TO_TICKS(10));
+        goto retry;
+    }
+}
+
+void esp_blufi_send_encap_p2e(void *arg)
+{
+    struct blufi_hdr *hdr = (struct blufi_hdr *)arg;
+retry:
+    if (blufi_env.is_connected == false) {
+        BTC_TRACE_WARNING("%s ble connection is broken\n", __func__);
+        return;
+    }
+    if (esp_ble_get_cur_sendable_packets_num(BTC_GATT_GET_CONN_ID(blufi_env.conn_id)) > 0) {
+        btc_blufi_send_notify_p2e((uint8_t *)hdr,
                               ((hdr->fc & BLUFI_FC_CHECK) ?
                                hdr->data_len + sizeof(struct blufi_hdr) + 2 :
                                hdr->data_len + sizeof(struct blufi_hdr)));

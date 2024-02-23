@@ -68,6 +68,7 @@ void bleprph_advertise(void);
 
 /* send notifications */
 void esp_blufi_send_notify(void *arg);
+void esp_blufi_send_notify_p2e(void *arg);
 
 /* Deinitialise blufi */
 void esp_blufi_deinit(void);
@@ -81,6 +82,7 @@ void esp_blufi_adv_stop(void);
 void esp_blufi_adv_start(void);
 
 void esp_blufi_send_encap(void *arg);
+void esp_blufi_send_encap_p2e(void *arg);
 
 #ifdef CONFIG_BT_NIMBLE_ENABLED
 /**

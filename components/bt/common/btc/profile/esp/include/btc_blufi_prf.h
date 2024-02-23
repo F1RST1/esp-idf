@@ -56,6 +56,7 @@ typedef enum {
     BTC_BLUFI_ACT_SEND_WIFI_LIST,
     BTC_BLUFI_ACT_SEND_ERR_INFO,
     BTC_BLUFI_ACT_SEND_CUSTOM_DATA,
+    BTC_BLUFI_ACT_SEND_CUSTOM_DATA_P2E,
 } btc_blufi_act_t;
 
 typedef union {
