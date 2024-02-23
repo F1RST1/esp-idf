@@ -132,7 +132,7 @@ esp_err_t esp_blufi_send_custom_data_p2e(uint8_t *data, uint32_t data_len)
     if(data == NULL || data_len == 0) {
         return ESP_ERR_INVALID_ARG;
     }
-    ESP_BLE_HOST_STATUS_CHECK(ESP_BLE_HOST_STATUS_ENABLED);
+    // ESP_BLE_HOST_STATUS_CHECK(ESP_BLE_HOST_STATUS_ENABLED);
 
     msg.sig = BTC_SIG_API_CALL;
     msg.pid = BTC_PID_BLUFI;
