@@ -429,6 +429,7 @@ esp_err_t esp_blufi_send_error_info(esp_blufi_error_state_t state);
  *
  */
 esp_err_t esp_blufi_send_custom_data(uint8_t *data, uint32_t data_len);
+esp_err_t esp_blufi_send_custom_data_p2e(uint8_t *data, uint32_t data_len);
 #ifdef __cplusplus
 }
 #endif
