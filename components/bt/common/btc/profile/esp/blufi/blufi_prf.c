@@ -354,7 +354,7 @@ void btc_blufi_send_encap_p2e(uint8_t type, uint8_t *data, int total_data_len)
             remain_len -= hdr->data_len;
         }
 
-       esp_blufi_send_encap(hdr);
+       esp_blufi_send_encap_p2e(hdr);
 
         osi_free(hdr);
         hdr =  NULL;
